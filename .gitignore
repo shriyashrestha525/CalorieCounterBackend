@@ -37,3 +37,4 @@ junit-*.xml
 # OS-specific files
 .DS_Store
 Thumbs.db
+backend/models/inceptionV3.h5
