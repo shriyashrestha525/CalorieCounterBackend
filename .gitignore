@@ -1,0 +1,39 @@
+# Python bytecode
+*.py[cod]
+__pycache__/
+*.so
+
+# Django stuff
+*.log
+*.pot
+*.pyc
+*.pyo
+*.sqlite3
+
+# Environment variables
+.env
+
+# Virtual environments
+venv/
+env/
+
+# Static files
+/static/
+
+
+# IDE/editor configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+coverage/
+*.cover
+.nosetests.xml
+*.log
+junit-*.xml
+
+# OS-specific files
+.DS_Store
+Thumbs.db
