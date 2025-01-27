@@ -17,68 +17,140 @@ from django.contrib.auth.models import User
 from django.contrib.auth.hashers import make_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.authentication import TokenAuthentication
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.serializers import ValidationError
+from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import authenticate
 from rest_framework.parsers import MultiPartParser, FormParser
+from .models import UserProfile
+from .serializers import UserProfileSerializer
+from django.contrib.auth.hashers import make_password
+from .models import History
+from django.utils.timezone import now, make_aware
+from datetime import datetime
+
+class UserProfileView(APIView):
+    permission_classes = [AllowAny]
+    def post(self, request):
+        # Get the data from the frontend (request.data contains the POST data)
+        print(request.data)
+        data = request.data
+        data['password'] = make_password(data['password'])  # Hash the password before saving
+
+
+        serializer = UserProfileSerializer(data=data)
+
+        if serializer.is_valid():
+            serializer.save()  # Save the new user profile to the database
+            return Response({'message': 'User profile created successfully'}, status=status.HTTP_201_CREATED)
+        else:
+            print(serializer.errors)  # Log the serializer errors to understand the issue
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        #return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def get(self, request):
+        
+
+        try:
+            user_profile = UserProfile.objects.get(username=request.user.username)
+            serializer = UserProfileSerializer(user_profile)
+            return Response(serializer.data)
+        except UserProfile.DoesNotExist:
+            return Response({'error': 'User profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        
+
+
+class RecentFoodsView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        try:
+            # Get today's date
+            today = now().date()
+            start_of_day = make_aware(datetime.combine(today, datetime.min.time()))
+            end_of_day = make_aware(datetime.combine(today, datetime.max.time()))
+
+            
+            # Fetch only today's food records
+            recent_foods = History.objects.filter(
+                user=request.user,
+                created_at__range=(start_of_day, end_of_day))
+
+            data = [
+                {
+                    'label': food.label,
+                    'model': food.model,
+                    'nutritional_info': food.nutritional_info,
+                }
+                for food in recent_foods
+            ]
+
+            return Response({'recent_foods': data})
+        except Exception as e:
+            return Response({'error': str(e)}, status=500)
 
 
 class RegisterView(APIView):
-    permission_classes = [AllowAny]  # Allow any user to register
+    permission_classes = [AllowAny] 
 
     def post(self, request):
         username = request.data.get('username')
         email = request.data.get('email')
         password = request.data.get('password')
 
+        errors = {}
+
         try:
             validate_email(email)
         except ValidationError:
-            return Response({'error': 'Invalid email format'}, status=status.HTTP_400_BAD_REQUEST)
+            errors['email'] = ['Invalid email format']
 
         if User.objects.filter(username=username).exists():
-            return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            errors['username'] = ['Username already exists']
         
         if User.objects.filter(email=email).exists():
-            return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
+            if 'email' not in errors:
+                errors['email'] = []
+            errors['email'].append('Email already exists')
 
         try:
             validate_password(password)
         except ValidationError as e:
-            return Response({'error': e.messages}, status=status.HTTP_400_BAD_REQUEST)
+            errors['password'] = e.messages
 
-        user = User.objects.create(
+        if errors:
+            return Response({'errors': errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = User.objects.create_user(
             username=username,
             email=email,
-            password=make_password(password),
+            password=password,
         )
 
-        # Generate a JWT token for the user upon successful registration
-        refresh = RefreshToken.for_user(user)
-        access_token = str(refresh.access_token)
+        user.save()
+
+        
         
         return Response({
             'message': 'User registered successfully',
-            'access_token': access_token,
         }, status=status.HTTP_201_CREATED)
     
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        email = request.data.get('email')
+        username = request.data.get('username')
         password = request.data.get('password')
 
-        # Find the user by email
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({'error': 'Invalid email or password'}, status=status.HTTP_400_BAD_REQUEST)
+        print("Request Data:", request.data)
+
+
+    
 
         # Authenticate the user
-        user = authenticate(username=user.username, password=password)
+        user = authenticate(username=username, password=password)
 
         if user is not None:
             # Generate JWT tokens
@@ -88,10 +160,15 @@ class LoginView(APIView):
             return Response({
                 'message': 'Login successful',
                 'access_token': access_token,
+                
             }, status=status.HTTP_200_OK)
         else:
-            return Response({'error': 'Invalid email or password'}, status=status.HTTP_400_BAD_REQUEST)
-
+            if not User.objects.filter(username=username).exists():
+                return Response({'error': 'Invalid username'}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({'error': 'Invalid password'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            
 
 sys.path.append("../food_recognition")
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'food_recognition.settings')
@@ -243,7 +320,7 @@ from tensorflow.keras.preprocessing.image import load_img, img_to_array
 
 
 class predict_food(APIView):
-    authentication_classes = [TokenAuthentication]
+    authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -291,7 +368,8 @@ class predict_food(APIView):
                         food_info_dict[key] = value.item()
                     else:
                         food_info_dict[key] = str(value)  # Ensure string conversion for non-numeric values
-
+                
+                portion = food_info_dict.get('portion', 'N/A')
                 # Prepare the nutrition table
                 nutrition_table = [
                     {'name': 'calories', 'value': food_info_dict.get('calories', 'N/A')},
@@ -300,6 +378,14 @@ class predict_food(APIView):
                     {'name': 'carbohydrates', 'value': food_info_dict.get('carbohydrates', 'N/A')},
                     
                 ]
+
+                user = request.user
+                History.objects.create(
+                    label=predicted_label,
+                    model=model_type,
+                    nutritional_info=nutrition_table,
+                    user=user
+                )
                 # calories = food_info['calories']
                 # protein = food_info['protein']
                 # calcium = food_info['calcium']
@@ -315,7 +401,7 @@ class predict_food(APIView):
                 default_storage.delete(temp_file_path)
 
                 
-                return JsonResponse({'message': 'Prediction successful', 'result': predicted_label, 'Nutrition' : nutrition_table})
+                return JsonResponse({'message': 'Prediction successful', 'result': predicted_label, 'portion': portion, 'Nutrition' : nutrition_table})
             
             except Exception as e:
                 return JsonResponse({'error': f'Error processing image: {str(e)}'}, status=500)

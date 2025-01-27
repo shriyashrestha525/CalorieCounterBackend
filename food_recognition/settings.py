@@ -72,7 +72,13 @@ MIDDLEWARE = [
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
-    *MIDDLEWARE,
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",  # CorsMiddleware should be before CommonMiddleware
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
 ROOT_URLCONF = "food_recognition.urls"
@@ -103,13 +109,12 @@ WSGI_APPLICATION = "food_recognition.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        'NAME': BASE_DIR / 'db.sqlite3',
-        # "NAME": "CalorieCounter",
-        # "USER" : "postgres",
-        # "PASSWORD" : "root1234",
-        # "HOST" : "localhost",
-        # "PORT" : "5433",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": "CalorieCounterProject",
+        "USER": "postgres",
+        "PASSWORD": "root1234",
+        "HOST": "127.0.0.1",
+        "PORT": "5433",
     }
 }
 
